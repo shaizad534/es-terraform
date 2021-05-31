@@ -15,3 +15,15 @@ output "private_key" {
   value       = tls_private_key.my_key.private_key_pem
   sensitive   = true 
 }
+
+output "vpc_id" {
+  value = aws_vpc.vpc_name.id
+}
+
+output "vpc_public_sn_id" {
+  value = aws_subnet.vpc_public_sn.id
+}
+
+output "vpc_private_sn_id" {
+  value = aws_subnet.vpc_private_sn.id
+}

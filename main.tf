@@ -15,6 +15,94 @@ provider "aws" {
   region = var.region
 }
 
+# Define a vpc
+resource "aws_vpc" "vpc_name" {
+  cidr_block = var.vpc_cidr_block
+  tags = {
+    Name = var.vpc_name
+  }
+}
+
+# Internet gateway for the public subnet
+resource "aws_internet_gateway" "demo_ig" {
+  vpc_id = aws_vpc.vpc_name.id
+  tags = {
+    Name = "demo_ig"
+  }
+}
+
+# Create Eip for NAT Gateway
+resource "aws_eip" "nat-gw-eip" {
+  vpc = true
+}
+
+# Nat gateway for the private subnet
+resource "aws_nat_gateway" "demo_ngw" {
+  allocation_id = aws_eip.nat-gw-eip.id
+  subnet_id     = aws_subnet.vpc_public_sn.id
+
+  tags = {
+    Name = "demo-ngw"
+  }
+}
+
+# Public subnet
+resource "aws_subnet" "vpc_public_sn" {
+  vpc_id            = aws_vpc.vpc_name.id
+  cidr_block        = var.vpc_public_subnet_1_cidr
+  availability_zone = var.pub_availability_zone
+  tags = {
+    Name = "vpc_public_sn"
+  }
+}
+
+# Private subnet
+resource "aws_subnet" "vpc_private_sn" {
+  vpc_id            = aws_vpc.vpc_name.id
+  cidr_block        = var.vpc_private_subnet_1_cidr
+  availability_zone = var.pub_availability_zone
+  tags = {
+    Name = "vpc_private_sn"
+  }
+}
+
+# Routing table for public subnet
+resource "aws_route_table" "vpc_public_sn_rt" {
+  vpc_id = aws_vpc.vpc_name.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.demo_ig.id
+  }
+  tags = {
+    Name = "vpc_public_sn_rt"
+  }
+}
+
+# Associate the routing table to public subnet
+resource "aws_route_table_association" "vpc_public_sn_rt_assn" {
+  subnet_id      = aws_subnet.vpc_public_sn.id
+  route_table_id = aws_route_table.vpc_public_sn_rt.id
+}
+
+# Routing table for private subnet
+resource "aws_route_table" "vpc_private_sn_rt" {
+  vpc_id = aws_vpc.vpc_name.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_nat_gateway.demo_ngw.id
+  }
+  tags = {
+    Name = "vpc_private_sn_rt"
+  }
+}
+
+# Associate the routing table to public subnet
+resource "aws_route_table_association" "vpc_private_sn_rt_assn" {
+  subnet_id      = aws_subnet.vpc_private_sn.id
+  route_table_id = aws_route_table.vpc_private_sn_rt.id
+}
+
+
 # SSH access and a key-pair to access the instance
 # Generate new private key
 
@@ -44,7 +132,7 @@ resource "aws_instance" "elastic-search" {
   ami                         = data.aws_ami.amazon-linux-2.id
   instance_type               = var.instancetype
   key_name                    = aws_key_pair.deployer.key_name
-  subnet_id                   = var.pub-subnet
+  subnet_id                   = aws_subnet.vpc_public_sn.id
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.elastic-search.id]
 
@@ -103,7 +191,7 @@ resource "aws_instance" "elastic-search" {
 resource "aws_security_group" "elastic-search" {
   name        = "elastic-search-sg"
   description = "Elastic Search Security Group"
-  vpc_id      = var.vpcid
+  vpc_id      = aws_vpc.vpc_name.id
   ingress {
     from_port   = 22
     to_port     = 22
